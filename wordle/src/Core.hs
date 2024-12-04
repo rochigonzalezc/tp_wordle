@@ -6,34 +6,32 @@ data Match
   | NoPertenece
   deriving (Eq, Show)
 
-letra_pertenece :: Char -> String -> Bool
-letra_pertenece letra "" = False
-letra_pertenece letra (p : palabra) =
+-- Verifica si una letra pertenece a una palabra
+letraPertenece :: Char -> String -> Bool
+letraPertenece letra "" = False
+letraPertenece letra (p : palabra) =
   if letra == p
     then True
-    else letra_pertenece letra palabra
+    else letraPertenece letra palabra
 
-letra_lugar_correcto :: Char -> Char -> Bool
-letra_lugar_correcto letra1 letra2 = letra1 == letra2
+-- Verifica si dos letras están en la posición correcta
+letraLugarCorrecto :: Char -> Char -> Bool
+letraLugarCorrecto letra1 letra2 = letra1 == letra2
 
+-- Función auxiliar para realizar el "match"
 match' :: String -> String -> String -> [(Char, Match)]
-match' (p1 : palabra1) (p2 : palabra2) palabra_inicial =
-  if letra_pertenece p1 palabra_inicial
-    then
-      if letra_lugar_correcto p1 p2
-        then
-          (p1, Correcto) : match' palabra1 palabra2 palabra_inicial
-        else
-          (p1, LugarIncorrecto) : match' palabra1 palabra2 palabra_inicial
-    else
-      (p1, NoPertenece) : match' palabra1 palabra2 palabra_inicial
-match' _ _ _ = []
+match' (p1 : palabra1) (p2 : palabra2) palabraInicial
+  | letraLugarCorrecto p1 p2 = (p2, Correcto) : match' palabra1 palabra2 palabraInicial
+  | letraPertenece p2 palabraInicial = (p2, LugarIncorrecto) : match' palabra1 palabra2 palabraInicial
+  | otherwise = (p2, NoPertenece) : match' palabra1 palabra2 palabraInicial
+match' _ _ _ = [] -- Caso base: listas vacías
 
+-- Función principal que llama a match'
 match :: String -> String -> [(Char, Match)]
 match palabra1 palabra2 = match' palabra1 palabra2 palabra1
 
--- >>> match "posta" "seria"
--- [('p',LugarIncorrecto),('o',LugarIncorrecto),('s',LugarIncorrecto),('t',LugarIncorrecto),('a',Correcto)]
+-- >>> match "aspas" "popas"
+-- [('p',LugarIncorrecto),('o',NoPertenece),('p',Correcto),('a',Correcto),('s',Correcto)]
 
--- >>> match "posta" "posta"
--- [('p',Correcto),('o',Correcto),('s',Correcto),('t',Correcto),('a',Correcto)]
+-- >>> match "posta" "nonon"
+-- [('n',NoPertenece),('o',Correcto),('n',NoPertenece),('o',LugarIncorrecto),('n',NoPertenece)]
