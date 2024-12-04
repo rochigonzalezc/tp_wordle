@@ -2,20 +2,20 @@ module CLI (main) where
 
 import TinyApp.Interactive (Key(..), Event(..), ContinueExit(..), runInteractive')
 import Wordle (Juego(..), iniciarJuego, enviarIntento, juegoTerminado, palabraSecreta, mensaje,jugar,cantidadIntentosDisponibles, mostrarGrilla)
+import System.Random.Stateful (uniformRM, globalStdGen)
 
-
-    
 main :: IO ()
 main = do
   putStrLn "Bienvenido a Wordle!"
   putStrLn "Ingrese la palabra secreta:"
-  palabra <- getLine
-  valido <- palabraInLista palabra (getListaPalabras "diccionario.txt")
-  if valido 
-    then let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
-      in loopJuego juegoInicial
-    else do
-      main
+  -- valido <- palabraInLista palabra (getListaPalabras "diccionario.txt")
+  palabras <- getListaPalabras "diccionario.txt"
+  position <- uniformRM (0, length palabras - 1) globalStdGen
+  palabra <- return $ palabras !! position
+
+  -- if valido 
+  let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
+    in loopJuego juegoInicial
 
 
 
@@ -48,6 +48,7 @@ palabraInLista palabra lista = do
 loopJuego :: Juego -> IO ()
 loopJuego juego
   | juegoTerminado juego = do
+      mostrarGrilla juego
       if palabraAdivinada juego
         then putStrLn $ "¡Felicidades! Adivinaste la palabra: " ++ palabraSecreta juego
         else putStrLn $ "¡Se acabaron los intentos! La palabra era: " ++ palabraSecreta juego
