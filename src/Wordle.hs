@@ -2,13 +2,26 @@
 module Wordle where
 import Core (Match(..), match)
 
-data Juego = Juego {palabraSecreta :: String, intentosDisponibles :: Int, intentosTotales :: Int, intentos :: [(String, [(Char, Match)])], palabraAdivinada :: Bool, mensaje :: Maybe String}
+data Juego = Juego {palabraSecreta :: String, intentosDisponibles :: Int, intentosTotales :: Int, intentos :: [(String, [(Char, Match)])], palabraAdivinada :: Bool, mensaje :: Maybe String, letrasUsadas :: [Char]}
   deriving (Show)
 
 iniciarJuego :: String -> Int -> Juego
-iniciarJuego palabra intentos = Juego {palabraSecreta = palabra, intentosDisponibles = intentos, intentosTotales = intentos, intentos = [], palabraAdivinada = False, mensaje = Nothing}
+iniciarJuego palabra intentos = Juego {palabraSecreta = palabra, intentosDisponibles = intentos, intentosTotales = intentos, intentos = [], palabraAdivinada = False, mensaje = Nothing, letrasUsadas = []}
 
 -- Enviar un intento y saber si el intento fue aceptado o no por alguna condición de error como longitud inválida o Char inválido.
+
+estaEnPalabra :: Char -> String -> Bool
+estaEnPalabra letra "" = False
+estaEnPalabra letra (p:palabra)= if letra == p then True else estaEnPalabra letra palabra
+
+devolverLetrasIncorrectas :: String -> String -> [Char]
+devolverLetrasIncorrectas "" _ = []
+devolverLetrasIncorrectas (x:xs) palabraSecreta = if not (estaEnPalabra x palabraSecreta) then x : devolverLetrasIncorrectas xs palabraSecreta else devolverLetrasIncorrectas xs palabraSecreta
+
+dejarSinRepetir :: [Char] -> [Char]
+dejarSinRepetir [] = []
+dejarSinRepetir (x:xs) = if x `elem` xs then dejarSinRepetir xs else x : dejarSinRepetir xs
+
 
 enviarIntento :: Juego -> String -> Juego
 enviarIntento juego intento
@@ -17,10 +30,12 @@ enviarIntento juego intento
   | not $ all (`elem` ['A' .. 'Z']) intento =
       juego {mensaje = Just "Caracteres invalidos en el intento."}
   | otherwise =
+      
       juego { intentosDisponibles = intentosDisponibles juego - 1,
               intentos = (intento, match (palabraSecreta juego) intento) : intentos juego,
               palabraAdivinada = palabraAdivinada juego || intento == palabraSecreta juego,
-              mensaje = Nothing
+              mensaje = Nothing, letrasUsadas = dejarSinRepetir (devolverLetrasIncorrectas intento (palabraSecreta juego) ++ letrasUsadas juego)
+              
             }
 
 -- Obtener si un juego terminó o no y si se logró adivinar la palabra o si se llegó a la cantidad de intentos posibles.
@@ -66,7 +81,9 @@ jugar juego
   | otherwise = do
       putStrLn $ "\nIntentos disponibles: " ++ show (cantidadIntentosDisponibles juego)
       mostrarGrilla juego
+      
       putStrLn "Ingresa tu intento:"
+      
       intento <- getLine
       let intentoMayuscula =  intento
       let juegoActualizado = enviarIntento juego intentoMayuscula

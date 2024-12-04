@@ -55,6 +55,7 @@ loopJuego juego
   | otherwise = do
       mostrarGrilla juego
       putStrLn $ "Intentos restantes: " ++ show (cantidadIntentosDisponibles juego)
+      putStrLn $ "Letras usadas: " ++ letrasUsadas juego
       putStrLn "Ingrese su intento:"
       intento <- getLine
       valido <- palabraInLista intento (getListaPalabras "diccionario.txt")
