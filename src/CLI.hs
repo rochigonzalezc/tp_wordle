@@ -1,9 +1,9 @@
 module CLI (main) where
-import System.Environment (getArgs)
-import TinyApp.Interactive (Key(..), Event(..), ContinueExit(..), runInteractive')
-import Wordle (Juego(..), iniciarJuego, enviarIntento, juegoTerminado, palabraSecreta, mensaje,jugar,cantidadIntentosDisponibles, mostrarGrilla,stringListToString, quitarPrefijo,esPalabra)
-import System.Random.Stateful (uniformRM, globalStdGen)
 
+import System.Environment (getArgs)
+import System.Random.Stateful (globalStdGen, uniformRM)
+import TinyApp.Interactive (ContinueExit (..), Event (..), Key (..), runInteractive')
+import Wordle (Juego (..), cantidadIntentosDisponibles, enviarIntento, iniciarJuego, juegoTerminado, mensaje, mostrarGrilla, palabraSecreta, quitarPrefijo, stringListToString)
 
 main :: IO ()
 main = do
@@ -14,21 +14,16 @@ main = do
   -- valido <- palabraInLista palabra (getListaPalabras "diccionario.txt")
   palabras <- getListaPalabras "diccionario.txt"
   position <- uniformRM (0, length palabras - 1) globalStdGen
-  if (stringListToString args) == "--random" then do
+  if (stringListToString args) == "--random"
+    then do
       palabra <- return $ palabras !! position
       putStrLn "Palabra secreta: "
-      let juegoInicial = iniciarJuego palabra 5  -- Convierte la palabra a mayúsculas
+      let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
       loopJuego juegoInicial
     else do
       let palabra = quitarPrefijo "--palabra" (stringListToString args)
-      let juegoInicial = iniciarJuego palabra 5  -- Convierte la palabra a mayúsculas
+      let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
       loopJuego juegoInicial
-
-
-
-
-
-
 
 -- funcion que lee diccionario.txt y me devuelva una lista
 -- leerArchivo :: String -> [IO String]
@@ -37,13 +32,11 @@ main = do
 --   let lineas = lines contenido
 --   return lineas
 
-
 getListaPalabras :: FilePath -> IO [String]
 getListaPalabras archivo = do
-    diccionario <- readFile archivo
-    let palabras = lines diccionario
-    return palabras
-
+  diccionario <- readFile archivo
+  let palabras = lines diccionario
+  return palabras
 
 palabraInLista :: String -> IO [String] -> IO Bool
 palabraInLista palabra lista = do
@@ -70,7 +63,7 @@ loopJuego juego
       valido <- palabraInLista intento (getListaPalabras "diccionario.txt")
       if valido
         then do
-          let intentoMayuscula =  intento
+          let intentoMayuscula = intento
           let juegoActualizado = enviarIntento juego intentoMayuscula
           case mensaje juegoActualizado of
             Just msg -> do
@@ -80,10 +73,10 @@ loopJuego juego
         else do
           loopJuego juego
 
-      -- let intentoMayuscula =  intento
-      -- let juegoActualizado = enviarIntento juego intentoMayuscula
-      -- case mensaje juegoActualizado of
-      --   Just msg -> do
-      --     putStrLn msg -- Mensaje de error
-      --     loopJuego juegoActualizado
-      --   Nothing -> loopJuego juegoActualizado
+-- let intentoMayuscula =  intento
+-- let juegoActualizado = enviarIntento juego intentoMayuscula
+-- case mensaje juegoActualizado of
+--   Just msg -> do
+--     putStrLn msg -- Mensaje de error
+--     loopJuego juegoActualizado
+--   Nothing -> loopJuego juegoActualizado
