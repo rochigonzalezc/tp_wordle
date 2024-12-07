@@ -24,6 +24,7 @@ library
         base ^>= 4.17.2.1,
         random ^>=1.2.0.0,
         tinyapp,
+        ansi-terminal
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -34,7 +35,8 @@ executable wordle
     build-depends:
         base ^>=4.17.2.1,
         random ^>=1.2.0.0,
-        wordle
+        wordle,
+        ansi-terminal
     hs-source-dirs:   app
     ghc-options:      -threaded
 
@@ -55,6 +57,7 @@ test-suite wordle-test
     build-depends:
         base ^>=4.17.2.1,
         random ^>=1.2.0.0,
-        wordle
+        wordle,
+        ansi-terminal
 
 

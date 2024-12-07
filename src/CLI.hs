@@ -1,5 +1,6 @@
 module CLI (main) where
 
+import Data.Char (toUpper)
 import System.Environment (getArgs)
 import System.Random.Stateful (globalStdGen, uniformRM)
 import TinyApp.Interactive (ContinueExit (..), Event (..), Key (..), runInteractive')
@@ -10,18 +11,20 @@ main = do
   args <- getArgs
   putStrLn (stringListToString args)
   putStrLn "Bienvenido a Wordle!"
-  putStrLn "Ingrese la palabra secreta:"
-  -- valido <- palabraInLista palabra (getListaPalabras "diccionario.txt")
+
+  -- Obtener la lista de palabras desde el diccionario
   palabras <- getListaPalabras "diccionario.txt"
+
   position <- uniformRM (0, length palabras - 1) globalStdGen
+
   if (stringListToString args) == "--random"
     then do
       palabra <- return $ palabras !! position
-      putStrLn "Palabra secreta: "
+      -- putStrLn "Palabra secreta: "
       let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
       loopJuego juegoInicial
     else do
-      let palabra = quitarPrefijo "--palabra" (stringListToString args)
+      let palabra = map toUpper (quitarPrefijo "--palabra" (stringListToString args))
       let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
       loopJuego juegoInicial
 
