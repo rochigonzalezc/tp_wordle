@@ -1,57 +1,74 @@
-module CLI (main) where
+-- src/Main.hs
+module CLI where
+
 
 import Data.Char (toUpper)
 import System.Environment (getArgs)
+import System.Exit (exitSuccess)
+import System.IO (BufferMode (NoBuffering), hSetBuffering, hSetEcho, stdin)
 import System.Random.Stateful (globalStdGen, uniformRM)
-import TinyApp.Interactive (ContinueExit (..), Event (..), Key (..), runInteractive')
-import Wordle (Juego (..), cantidadIntentosDisponibles, enviarIntento, iniciarJuego, juegoTerminado, mensaje, mostrarGrilla, palabraSecreta, quitarPrefijo, stringListToString)
+import Wordle
 
-main :: IO ()
-main = do
-  args <- getArgs
-  putStrLn (stringListToString args)
-  putStrLn "Bienvenido a Wordle!"
+-- Función para convertir una lista de Strings a un solo String
+stringListToString :: [String] -> String
+stringListToString [] = ""
+stringListToString (x : xs) = x ++ stringListToString xs
 
-  -- Obtener la lista de palabras desde el diccionario
-  palabras <- getListaPalabras "diccionario.txt"
+-- Función para quitar un prefijo de una cadena si existe
+quitarPrefijo :: String -> String -> String
+quitarPrefijo prefijo palabra =
+  case stripPrefix prefijo palabra of
+    Just resto -> dropWhile (== ' ') resto -- Remove leading spaces after the prefix
+    Nothing -> palabra
 
-  position <- uniformRM (0, length palabras - 1) globalStdGen
+-- Función que elimina un prefijo de una cadena si existe
+stripPrefix :: String -> String -> Maybe String
+stripPrefix [] str = Just str -- Si el prefijo está vacío, la cadena no cambia
+stripPrefix _ [] = Nothing -- Si la cadena está vacía pero el prefijo no, no hay coincidencia
+stripPrefix (x : xs) (y : ys)
+  | x == y = stripPrefix xs ys -- Si los caracteres coinciden, continúa con el resto
+  | otherwise = Nothing -- Si no coinciden, no es un prefijo
 
-  if (stringListToString args) == "--random"
-    then do
-      palabra <- return $ palabras !! position
-      -- putStrLn "Palabra secreta: "
-      let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
-      loopJuego juegoInicial
-    else do
-      let palabra = map toUpper (quitarPrefijo "--palabra" (stringListToString args))
-      let juegoInicial = iniciarJuego palabra 5 -- Convierte la palabra a mayúsculas
-      loopJuego juegoInicial
+-- Función para manejar la entrada del usuario
+handleInput :: Juego -> IO Juego
+handleInput juego = do
+  c <- readCharRaw
+  let upperC = toUpper c
+  if upperC == '\ESC'
+    then
+      exitSuccess
+    else
+      if upperC == '\DEL' || upperC == '\b'
+        then
+          let current = currentAttempt juego
+              newAttempt = if null current then current else init current
+           in return juego {currentAttempt = newAttempt}
+        else
+          if upperC == '\n' || upperC == '\r'
+            then
+              if length (currentAttempt juego) == longitudPalabra juego
+                then do
+                  juegoActualizado <- enviarIntento juego (currentAttempt juego)
+                  return juegoActualizado
+                else do
+                  -- Mostrar mensaje de error
+                  putStrLn "\nCompleta la palabra antes de enviar."
+                  return juego
+            else
+              if length (currentAttempt juego) < longitudPalabra juego && upperC `elem` ['A' .. 'Z']
+                then
+                  let newAttempt = currentAttempt juego ++ [upperC]
+                   in return juego {currentAttempt = newAttempt}
+                else
+                  return juego -- Ignorar otros caracteres
 
--- funcion que lee diccionario.txt y me devuelva una lista
--- leerArchivo :: String -> [IO String]
--- leerArchivo archivo = do
---   contenido <- readFile archivo
---   let lineas = lines contenido
---   return lineas
-
-getListaPalabras :: FilePath -> IO [String]
-getListaPalabras archivo = do
-  diccionario <- readFile archivo
-  let palabras = lines diccionario
-  return palabras
-
-palabraInLista :: String -> IO [String] -> IO Bool
-palabraInLista palabra lista = do
-  lista' <- lista
-  if palabra `elem` lista'
-    then putStrLn "La palabra ingresada se encuentra en el diccionario."
-    else putStrLn "La palabra ingresada no se encuentra en el diccionario."
-  return (palabra `elem` lista')
+-- Función para leer un carácter sin esperar enter
+readCharRaw :: IO Char
+readCharRaw = getChar
 
 -- Bucle principal del juego
-loopJuego :: Juego -> IO ()
-loopJuego juego
+jugar :: Juego -> IO ()
+jugar juego
   | juegoTerminado juego = do
       mostrarGrilla juego
       if palabraAdivinada juego
@@ -59,27 +76,32 @@ loopJuego juego
         else putStrLn $ "¡Se acabaron los intentos! La palabra era: " ++ palabraSecreta juego
   | otherwise = do
       mostrarGrilla juego
-      putStrLn $ "Intentos restantes: " ++ show (cantidadIntentosDisponibles juego)
-      putStrLn $ "Letras usadas: " ++ letrasUsadas juego
-      putStrLn "Ingrese su intento:"
-      intento <- getLine
-      valido <- palabraInLista intento (getListaPalabras "diccionario.txt")
-      if valido
-        then do
-          let intentoMayuscula = intento
-          let juegoActualizado = enviarIntento juego intentoMayuscula
-          case mensaje juegoActualizado of
-            Just msg -> do
-              putStrLn msg -- Mensaje de error
-              loopJuego juegoActualizado
-            Nothing -> loopJuego juegoActualizado
-        else do
-          loopJuego juego
+      -- Manejar entradas en tiempo real
+      juegoActualizado <- handleInput juego
+      jugar juegoActualizado
 
--- let intentoMayuscula =  intento
--- let juegoActualizado = enviarIntento juego intentoMayuscula
--- case mensaje juegoActualizado of
---   Just msg -> do
---     putStrLn msg -- Mensaje de error
---     loopJuego juegoActualizado
---   Nothing -> loopJuego juegoActualizado
+main :: IO ()
+main = do
+  -- Configurar el terminal
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
+
+  args <- getArgs
+  putStrLn "Bienvenido a Wordle!"
+
+  -- Obtener la lista de palabras desde el diccionario
+  palabras <- getListaPalabras "diccionario.txt"
+
+  -- Determinar si se usa la opción --random o se proporciona una palabra específica
+  juegoInicial <-
+    if "--random" `elem` args
+      then do
+        -- Generar un índice aleatorio para seleccionar una palabra
+        position <- uniformRM (0, length palabras - 1) globalStdGen
+        let palabra = palabras !! position
+        return $ iniciarJuego palabra 6 -- 6 intentos
+      else do
+        -- Extraer la palabra secreta de los argumentos
+        let palabra = quitarPrefijo "--palabra" (stringListToString args)
+        return $ iniciarJuego palabra 6 -- 6 intentos
+  jugar juegoInicial

@@ -1,3 +1,4 @@
+-- src/Wordle.hs
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Wordle where
@@ -5,6 +6,21 @@ module Wordle where
 import Control.Monad (forM_)
 import Core (Match (..), match)
 import Data.Char (toUpper)
+import Data.List (nub)
+import System.Console.ANSI
+  ( Color (..),
+    ColorIntensity (..),
+    ConsoleLayer (..),
+    SGR (..),
+    clearScreen,
+    hideCursor,
+    setCursorPosition,
+    setSGR,
+    showCursor,
+  )
+import System.Exit (exitSuccess)
+import System.IO (BufferMode (NoBuffering), hSetBuffering, hSetEcho, readFile, stdin)
+
 
 data Juego = Juego
   { palabraSecreta :: String,
@@ -13,23 +29,25 @@ data Juego = Juego
     intentos :: [(String, [(Char, Match)])],
     palabraAdivinada :: Bool,
     mensaje :: Maybe String,
-    letrasUsadas :: [Char]
+    letrasUsadas :: [Char],
+    currentAttempt :: String -- Intento actual
   }
   deriving (Show)
 
 iniciarJuego :: String -> Int -> Juego
 iniciarJuego palabra intentos =
   Juego
-    { palabraSecreta = palabra,
+    { palabraSecreta = map toUpper palabra,
       intentosDisponibles = intentos,
       intentosTotales = intentos,
       intentos = [],
       palabraAdivinada = False,
       mensaje = Nothing,
-      letrasUsadas = []
+      letrasUsadas = [],
+      currentAttempt = ""
     }
 
--- Enviar un intento y saber si el intento fue aceptado o no por alguna condición de error como longitud inválida o Char inválido.
+-- Funciones auxiliares
 
 estaEnPalabra :: Char -> String -> Bool
 estaEnPalabra letra "" = False
@@ -46,26 +64,45 @@ dejarSinRepetir :: [Char] -> [Char]
 dejarSinRepetir [] = []
 dejarSinRepetir (x : xs) = if x `elem` xs then dejarSinRepetir xs else x : dejarSinRepetir xs
 
-enviarIntento :: Juego -> String -> Juego
-enviarIntento juego intento
-  | length intento /= length (palabraSecreta juego) =
-      juego {mensaje = Just "Longitud invalida del intento."}
-  | not $ all (`elem` ['A' .. 'Z']) intento =
-      juego {mensaje = Just "Caracteres invalidos en el intento."}
-  | otherwise =
-      juego
-        { intentosDisponibles = intentosDisponibles juego - 1,
-          intentos = (intento, match (palabraSecreta juego) intento) : intentos juego,
-          palabraAdivinada = palabraAdivinada juego || intento == palabraSecreta juego,
-          mensaje = Nothing,
-          letrasUsadas = dejarSinRepetir (devolverLetrasIncorrectas intento (palabraSecreta juego) ++ letrasUsadas juego)
-        }
+-- Función para leer el diccionario de palabras
+getListaPalabras :: FilePath -> IO [String]
+getListaPalabras path = do
+  content <- readFile path
+  return (lines content)
 
--- Obtener si un juego terminó o no y si se logró adivinar la palabra o si se llegó a la cantidad de intentos posibles.
+-- Función para enviar un intento
+enviarIntento :: Juego -> String -> IO Juego
+enviarIntento juego intento = do
+  palabras <- getListaPalabras "diccionario.txt"
+  let palabraMayuscula = map toUpper intento
+  if palabraMayuscula `elem` map (map toUpper) palabras
+    then
+      if length palabraMayuscula /= longitudPalabra juego
+        then
+          return juego {mensaje = Just "Longitud inválida del intento."}
+        else
+          if not (all (`elem` ['A' .. 'Z']) palabraMayuscula)
+            then
+              return juego {mensaje = Just "Caracteres inválidos en el intento."}
+            else do
+              let juegoActualizado =
+                    juego
+                      { intentosDisponibles = intentosDisponibles juego - 1,
+                        intentos = (palabraMayuscula, match (palabraSecreta juego) palabraMayuscula) : intentos juego,
+                        palabraAdivinada = palabraAdivinada juego || palabraMayuscula == palabraSecreta juego,
+                        mensaje = Nothing,
+                        letrasUsadas = dejarSinRepetir (devolverLetrasIncorrectas palabraMayuscula (palabraSecreta juego) ++ letrasUsadas juego),
+                        currentAttempt = "" -- Resetear el intento actual después de enviar
+                      }
+              return juegoActualizado
+    else
+      return juego {mensaje = Just "La palabra no está en el diccionario."}
+
+-- Función para verificar si el juego ha terminado
 juegoTerminado :: Juego -> Bool
 juegoTerminado juego = intentosDisponibles juego == 0 || palabraAdivinada juego
 
--- Obtener la longitud de la palabra secreta, cantidad de intentos disponibles, cantidad de intentos totales posibles.
+-- Funciones para obtener información del juego
 longitudPalabra :: Juego -> Int
 longitudPalabra juego = length $ palabraSecreta juego
 
@@ -76,88 +113,81 @@ cantidadIntentosTotales :: Juego -> Int
 cantidadIntentosTotales juego = intentosTotales juego
 
 -- ANSI color codes
-ansiResetColor, ansiBgYellowColor, ansiBgGreenColor, ansiBgRedColor :: String
-ansiResetColor = "\ESC[39m\ESC[49m"
-ansiBgYellowColor = "\ESC[103m"
-ansiBgGreenColor = "\ESC[42m"
-ansiBgRedColor = "\ESC[41m"
+ansiResetColor, ansiBgYellowColor, ansiBgGreenColor, ansiBgRedColor :: [SGR]
+ansiResetColor = [Reset]
+ansiBgYellowColor = [SetColor Background Vivid Yellow]
+ansiBgGreenColor = [SetColor Background Vivid Green]
+ansiBgRedColor = [SetColor Background Vivid Red]
 
--- Función para generar una línea de borde
+-- Función para generar una línea de borde, e.g., +---+---+---+---+---+
 lineaBorde :: Int -> String
 lineaBorde n = "+" ++ concat (replicate n "---+")
 
 -- Función para generar una línea de celdas con letras coloreadas
-lineaCeldas :: String -> [(Char, Match)] -> String
-lineaCeldas palabra matches = "|" ++ concatMap formatoChar matches ++ "|"
-  where
-    formatoChar :: (Char, Match) -> String
-    formatoChar (c, m) = case m of
-      Correcto -> ansiBgGreenColor ++ " " ++ [c] ++ " " ++ ansiResetColor ++ "|"
-      LugarIncorrecto -> ansiBgYellowColor ++ " " ++ [c] ++ " " ++ ansiResetColor ++ "|"
-      NoPertenece -> ansiBgRedColor ++ " " ++ [c] ++ " " ++ ansiResetColor ++ "|"
+lineaCeldas :: String -> [(Char, Match)] -> IO ()
+lineaCeldas palabra matches = do
+  putStr "   |"
+  forM_ (zip palabra matches) $ \(c, m) -> do
+    setSGR $ case snd m of
+      Correcto -> ansiBgGreenColor
+      LugarIncorrecto -> ansiBgYellowColor
+      NoPertenece -> ansiBgRedColor
+    putStr $ " " ++ [c] ++ " |"
+  setSGR [Reset]
+  putStrLn ""
 
--- Función para mostrar la grilla completa
+-- Función para generar una línea de celdas vacías
+lineaCeldasVacias :: Int -> IO ()
+lineaCeldasVacias n = do
+  putStr "   |"
+  forM_ [1 .. n] $ \_ -> putStr "   |"
+  putStrLn ""
+
+-- Función para mostrar el intento actual dentro de la grilla
+displayCurrentAttempt :: String -> Int -> [Char] -> IO ()
+displayCurrentAttempt attempt n letrasDescartadas = do
+  putStr "   |"
+  forM_ [1 .. n] $ \i -> do
+    if i <= length attempt
+      then do
+        let char = attempt !! (i - 1)
+        if char `elem` letrasDescartadas
+          then setSGR [SetColor Background Vivid Red] 
+          else setSGR [SetColor Background Vivid White] 
+        putStr $ " " ++ [char] ++ " |"
+      else do
+        setSGR [Reset]
+        putStr "   |"
+  setSGR [Reset]
+  putStrLn "   "
+
+-- Función para mostrar la grilla completa incluyendo el intento actual
 mostrarGrilla :: Juego -> IO ()
 mostrarGrilla juego = do
-  putStrLn "\nGrilla:"
+  clearScreen 
+  setCursorPosition 0 0
+  hideCursor 
   let n = longitudPalabra juego
       totalLineas = intentosTotales juego
-      bordes = replicate totalLineas (lineaBorde n)
       intentosList = reverse $ intentos juego
-      -- Si hay menos intentos realizados que el total, agregamos filas vacías
+    
       intentosCompletos = intentosList ++ replicate (totalLineas - length intentosList) ("", replicate n (' ', NoPertenece))
 
-  forM_ (zip bordes intentosCompletos) $ \(b, (intento, matches)) -> do
-    putStrLn b
+  putStrLn $ "   " ++ lineaBorde n
+
+  -- Iterar sobre cada intento y mostrarlo
+  forM_ intentosCompletos $ \(intento, matches) -> do
     if null intento
-      then putStrLn $ "|" ++ concat (replicate n "   |")
-      else putStrLn $ lineaCeldas intento matches
-  -- Imprimir el borde final
-  putStrLn $ lineaBorde n
+      then lineaCeldasVacias n
+      else lineaCeldas intento matches
+    putStrLn $ "   " ++ lineaBorde n
 
--- Bucle principal del juego
-jugar :: Juego -> IO ()
-jugar juego
-  | juegoTerminado juego = do
-      mostrarGrilla juego
-      if palabraAdivinada juego
-        then putStrLn $ "¡Felicidades! Adivinaste la palabra: " ++ palabraSecreta juego
-        else putStrLn $ "¡Se acabaron los intentos! La palabra era: " ++ palabraSecreta juego
-  | otherwise = do
-      mostrarGrilla juego
-      putStrLn $ "\nIntentos disponibles: " ++ show (cantidadIntentosDisponibles juego)
-      putStrLn "Ingresa tu intento:"
+  -- Mostrar el intento actual en la siguiente fila de la grilla
+  putStrLn "   Intento: "
+  displayCurrentAttempt (currentAttempt juego) n (letrasUsadas juego)
 
-      intento <- getLine
-      let intentoMayuscula = map toUpper intento
-      let juegoActualizado = enviarIntento juego intentoMayuscula
-      case mensaje juegoActualizado of
-        Just msg -> do
-          putStrLn msg
-          jugar juegoActualizado
-        Nothing -> jugar juegoActualizado
-
-stringListToString :: [String] -> String
-stringListToString [] = ""
-stringListToString (x : xs) = x ++ stringListToString xs
-
-quitarPrefijo :: String -> String -> String
-quitarPrefijo palabra1 palabra2 =
-  case stripPrefix palabra1 palabra2 of
-    Just resto -> resto -- Si palabra1 es un prefijo, devolvemos el resto
-    Nothing -> palabra2 -- Si no, devolvemos palabra2 sin cambios
-
--- Función que elimina un prefijo de una cadena si existe
-stripPrefix :: String -> String -> Maybe String
-stripPrefix [] str = Just str -- Si el prefijo está vacío, la cadena no cambia
-stripPrefix _ [] = Nothing -- Si la cadena está vacía pero el prefijo no, no hay coincidencia
-stripPrefix (x : xs) (y : ys)
-  | x == y = stripPrefix xs ys -- Si los caracteres coinciden, continúa con el resto
-  | otherwise = Nothing -- Si no coinciden, no es un prefijo
-
-esPalabra :: String -> String -> Bool
-esPalabra _ [] = True -- Si la palabra está vacía o el texto se ha agotado, no hay coincidencia.
-esPalabra [] _ = False -- Si la palabra está vacía, siempre se considera que está en cualquier texto (o es trivialmente aceptada).
-esPalabra (p : ps) (t : ts)
-  | (p == t) = esPalabra ps ts -- Si los primeros caracteres coinciden, continuamos comparando el resto de la palabra y el texto.
-  | otherwise = esPalabra (p : ps) ts -- Si no coinciden, seguimos buscando la palabra en el resto del texto.
+  showCursor 
+  
+  -- Mostrar letras usadas que no están en la palabra secreta
+  putStrLn "\nLetras descartadas: "
+  putStrLn $ unwords $ map (:[]) $ letrasUsadas juego
