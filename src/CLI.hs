@@ -1,7 +1,6 @@
 -- src/Main.hs
 module CLI where
 
-
 import Data.Char (toUpper)
 import System.Environment (getArgs)
 import System.Exit (exitSuccess)
@@ -15,11 +14,13 @@ stringListToString [] = ""
 stringListToString (x : xs) = x ++ stringListToString xs
 
 -- Función para quitar un prefijo de una cadena si existe
-quitarPrefijo :: String -> String -> String
-quitarPrefijo prefijo palabra =
-  case stripPrefix prefijo palabra of
-    Just resto -> dropWhile (== ' ') resto -- Remove leading spaces after the prefix
-    Nothing -> palabra
+quitarPrefijo :: String -> String
+quitarPrefijo "" = ""
+quitarPrefijo palabra =
+  if palabra !! 0 == '-'
+    then quitarPrefijo (tail palabra)
+    else
+      palabra
 
 -- Función que elimina un prefijo de una cadena si existe
 stripPrefix :: String -> String -> Maybe String
@@ -101,7 +102,9 @@ main = do
         let palabra = palabras !! position
         return $ iniciarJuego palabra 6 -- 6 intentos
       else do
+        putStrLn (stringListToString args)
         -- Extraer la palabra secreta de los argumentos
-        let palabra = quitarPrefijo "--palabra" (stringListToString args)
+        let palabra = quitarPrefijo (stringListToString args)
+        putStrLn palabra
         return $ iniciarJuego palabra 6 -- 6 intentos
   jugar juegoInicial
